@@ -1,56 +1,67 @@
-import students from "../../../models/studentsModel.js"
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
-export const getAllStudents = async (req, res) =>{
-	try{
-		const allStudents = await students.find()
+import students from "../../../models/studentsModel.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export const getAllStudents = async (req, res) => {
+	try {
+		const allStudents = await students.find();
 		return res.status(200).json({
 			status: "success",
 			message: "Get all students data successfully",
-			allStudents
-		})
-		
-	}  catch (err) {
-		console.error("Error getting all students",err)
+			allStudents,
+		});
+	} catch (err) {
+		console.error("Error getting all students", err);
 		return res.status(500).json({
 			status: "error",
-			message: "Failed to get all students data"
-		})
+			message: "Failed to get all students data",
+		});
 	}
-}
+};
 
 export const getAStudent = async (req, res) => {
-	console.log(req.params.id)
-	try{
-		const findStudent = await students.findOne({_id:req.params.id})
+	// console.log(req.params.id);
+	try {
+		const findStudent = await students.findOne({ _id: req.params.id });
 		if (findStudent) {
 			return res.status(200).json({
 				status: "success",
 				message: "Student found successfully",
-				findStudent
-			})
+				findStudent,
+			});
 		} else {
 			return res.status(404).json({
 				status: "not found",
-				message: "Student does not exist"
-			})
+				message: "Student does not exist",
+			});
 		}
 	} catch (err) {
-		console.error("Error finding a student: ",err)
+		console.error("Error finding a student: ", err);
 		return res.status(500).json({
 			status: "error",
-			message: "Failed to find a student"			
-		})
+			message: "Failed to find a student",
+		});
 	}
-}
+};
 
-export const addStudent = async (req, res)=>{
-	console.log(req.body)
-	try{
-		const addedStudent = await students.create(req.body) 
+export const addStudent = async (req, res) => {
+	// console.log(req.body);
+	// console.log(req.file);
+	try {
+		if (req.file) {
+			req.body.profilePhoto = req.file.filename;
+		}
+		const addedStudent = await students.create(req.body);
 		return res.status(201).json({
 			status: "success",
 			message: "Student added successfully",
-		})
+			student: addedStudent,
+		});
 	} catch (err) {
 		console.error("Error adding student:", err);
 		return res.status(500).json({
@@ -58,55 +69,126 @@ export const addStudent = async (req, res)=>{
 			message: "Failed to add student",
 		});
 	}
-}
+};
 
 export const updateStudent = async (req, res) => {
-	console.log(req.params.id)
-	console.log(req.body)
-	try{
-		const findStudent = await students.findOne({_id:req.params.id})
-		if (findStudent) {
-			const updateAStudent = await students.findByIdAndUpdate(req.params.id, req.body)
-			return res.status(200).json({
-				status: "success",
-				message: "Student updated successfully"
-			})
-		} else {
-			return res.status(404).json({
-				status: "not found",
-				message: "Student does not exist"
-			})
-		}
-	} catch (err) {
-		console.error("Error updating student: ",err)
-		return res.status(500).json({
-			status: "error",                              
-			message: "Failed to updating student"			
-		})
-	}
-}
+	// console.log(req.params.id);
+	// console.log(req.body);
+	// console.log(req.file);
+	try {
+		const findStudent = await students.findOne({ _id: req.params.id });
+		if (!findStudent) {
+			if (req.file && req.file.filename) {
+				fs.unlink(
+					path.join(
+						__dirname,
+						"../../../uploads/",
+						req.file.filename
+					),
+					(err) =>
+						err &&
+						console.error("Failed to delete unused file:", err)
+				);
+			}
 
-export const deleteStudent = async (req, res)=> {
-	console.log(req.params.id)
-	try{
-		const findStudent = await students.findOne({_id:req.params.id})
-		if (findStudent) {
-			const deleteStudent = await students.findByIdAndDelete(req.params.id)
-			return res.status(200).json({
-				status: "success",
-				message: "Student deleted successfully"
-			})
-		} else {
 			return res.status(404).json({
 				status: "not found",
-				message: "Student does not exist"
-			})
+				message: "Student does not exist",
+			});
 		}
+		if (
+			findStudent.profilePhoto &&
+			req.file && // Only delete old photo if a new one is being uploaded
+			fs.existsSync(
+				path.join(
+					__dirname,
+					"../../../uploads/",
+					findStudent.profilePhoto
+				)
+			)
+		) {
+			fs.unlink(
+				path.join(
+					__dirname,
+					"../../../uploads/",
+					findStudent.profilePhoto
+				),
+				(err) => err && console.error("Failed to delete file:", err)
+			);
+		}
+
+		if (req.file) {
+			req.body.profilePhoto = req.file.filename;
+		}
+		// Add { new: true } to return the updated document instead of the original
+		const updatedStudent = await students.findByIdAndUpdate(
+			req.params.id,
+			req.body,
+			{ new: true }
+		);
+		return res.status(200).json({
+			status: "success",
+			message: "Student updated successfully",
+			student: updatedStudent,
+		});
 	} catch (err) {
-		console.error("Error deleting student: ",err)
+		if (req.file && req.file.filename) {
+			fs.unlink(
+				path.join(__dirname, "../../../uploads/", req.file.filename),
+				(err) =>
+					err &&
+					console.error("Failed to delete file after error:", err)
+			);
+		}
+
+		console.error("Error updating student: ", err);
 		return res.status(500).json({
 			status: "error",
-			message: "Failed to delete student"			
-		})
+			message: "Failed to update student",
+		});
 	}
-}
+};
+
+export const deleteStudent = async (req, res) => {
+	// console.log(req.params.id);
+	try {
+		const findStudent = await students.findOne({ _id: req.params.id });
+		if (!findStudent) {
+			return res.status(404).json({
+				status: "not found",
+				message: "Student does not exist",
+			});
+		}
+		if (
+			findStudent.profilePhoto &&
+			fs.existsSync(
+				path.join(
+					__dirname,
+					"../../../uploads/",
+					findStudent.profilePhoto
+				)
+			)
+		) {
+			fs.unlink(
+				path.join(
+					__dirname,
+					"../../../uploads/",
+					findStudent.profilePhoto
+				),
+				(err) => err && console.error("Failed to delete file:", err)
+			);
+		}
+		const deletedStudent = await students.findByIdAndDelete(req.params.id);
+		return res.status(200).json({
+			status: "success",
+			message: "Student deleted successfully",
+			student: deletedStudent,
+		});
+	} catch (err) {
+		console.error("Error deleting student: ", err);
+		return res.status(500).json({
+			status: "error",
+			message: "Failed to delete student",
+		});
+	}
+};

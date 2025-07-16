@@ -1,5 +1,5 @@
-import express from "express"
-import studentRoutes from "./students.routes.js"
+import express from "express";
+import studentRoutes from "./students.routes.js";
 
 const router = express.Router();
 
@@ -12,6 +12,6 @@ router.get("/", (req, res) => {
 	});
 });
 
-router.use("/students", studentRoutes)
+router.use("/students", studentRoutes);
 
-export default router
+export default router;
