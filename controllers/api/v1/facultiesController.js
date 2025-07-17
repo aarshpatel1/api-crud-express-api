@@ -1,7 +1,14 @@
 import Faculties from "../../../models/facultiesModel.js";
 
+import { config } from "dotenv";
 import bcrypt from "bcrypt";
 import moment from "moment";
+import jwt from "jsonwebtoken";
+
+config({
+	path: "./.env",
+	quiet: true,
+});
 
 const saltRounds = 10;
 
@@ -52,10 +59,16 @@ export const login = async (req, res) => {
 				checkFaculty.password
 			);
 			if (matchPassword) {
+				const token = jwt.sign(
+					{ facultyData: checkFaculty },
+					process.env.JWT_SECRET,
+					{ expiresIn: "1h" }
+				);
 				return res.status(200).json({
 					status: "success",
 					message: "Faculty logged in successfully",
 					faculty: checkFaculty,
+					token,
 				});
 			} else {
 				return res.status(400).json({
