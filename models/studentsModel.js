@@ -3,7 +3,6 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
-
 const studentSchema = mongoose.Schema({
 	firstName: {
 		type: String,
@@ -56,6 +55,6 @@ studentSchema.statics.uploadStudentProfilePhoto = multer({
 	storage: storage,
 }).single("profilePhoto");
 
-const students = mongoose.model("student", studentSchema);
+const Students = mongoose.model("student", studentSchema);
 
-export default students;
+export default Students;

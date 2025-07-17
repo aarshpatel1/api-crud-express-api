@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import students from "../../../models/studentsModel.js";
+import Students from "../../../models/studentsModel.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,13 +28,12 @@ export const getAllStudents = async (req, res) => {
 		const sortOptions = {};
 		sortOptions[sortField] = sortDirection;
 
-		const allStudents = await students
-			.find(query)
+		const allStudents = await Students.find(query)
 			.sort(sortOptions)
 			.skip(currentPage * recordsPerPage)
 			.limit(recordsPerPage);
 
-		const totalStudents = await students.countDocuments(query);
+		const totalStudents = await Students.countDocuments(query);
 		const totalPages = Math.ceil(totalStudents / recordsPerPage);
 
 		if (totalStudents > 0 && currentPage >= totalPages) {
@@ -84,7 +83,7 @@ export const getAllStudents = async (req, res) => {
 export const getAStudent = async (req, res) => {
 	// console.log(req.params.id);
 	try {
-		const findStudent = await students.findOne({ _id: req.params.id });
+		const findStudent = await Students.findOne({ _id: req.params.id });
 		if (findStudent) {
 			return res.status(200).json({
 				status: "success",
@@ -113,7 +112,7 @@ export const addStudent = async (req, res) => {
 		if (req.file) {
 			req.body.profilePhoto = req.file.filename;
 		}
-		const addedStudent = await students.create(req.body);
+		const addedStudent = await Students.create(req.body);
 		return res.status(201).json({
 			status: "success",
 			message: "Student added successfully",
@@ -133,7 +132,7 @@ export const updateStudent = async (req, res) => {
 	// console.log(req.body);
 	// console.log(req.file);
 	try {
-		const findStudent = await students.findOne({ _id: req.params.id });
+		const findStudent = await Students.findOne({ _id: req.params.id });
 		if (!findStudent) {
 			if (req.file && req.file.filename) {
 				fs.unlink(
@@ -178,7 +177,7 @@ export const updateStudent = async (req, res) => {
 			req.body.profilePhoto = req.file.filename;
 		}
 		// Add { new: true } to return the updated document instead of the original
-		const updatedStudent = await students.findByIdAndUpdate(
+		const updatedStudent = await Students.findByIdAndUpdate(
 			req.params.id,
 			req.body,
 			{ new: true }
@@ -209,7 +208,7 @@ export const updateStudent = async (req, res) => {
 export const deleteStudent = async (req, res) => {
 	// console.log(req.params.id);
 	try {
-		const findStudent = await students.findOne({ _id: req.params.id });
+		const findStudent = await Students.findOne({ _id: req.params.id });
 		if (!findStudent) {
 			return res.status(404).json({
 				status: "not found",
