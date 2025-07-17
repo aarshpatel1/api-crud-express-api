@@ -234,7 +234,7 @@ export const deleteStudent = async (req, res) => {
 				(err) => err && console.error("Failed to delete file:", err)
 			);
 		}
-		const deletedStudent = await students.findByIdAndDelete(req.params.id);
+		const deletedStudent = await Students.findByIdAndDelete(req.params.id);
 		return res.status(200).json({
 			status: "success",
 			message: "Student deleted successfully",
@@ -247,4 +247,11 @@ export const deleteStudent = async (req, res) => {
 			message: "Failed to delete student",
 		});
 	}
+};
+
+export const failedLogin = (req, res) => {
+	return res.status(401).json({
+		status: "unauthenticated",
+		message: "You have to login with valid credentials",
+	});
 };
