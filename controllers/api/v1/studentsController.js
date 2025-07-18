@@ -1,11 +1,4 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-
 import students from "../../../models/studentsModel.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export const getAllStudents = async (req, res) => {
 	let search = req.query.search || "";
@@ -82,7 +75,6 @@ export const getAllStudents = async (req, res) => {
 };
 
 export const getAStudent = async (req, res) => {
-	// console.log(req.params.id);
 	try {
 		const findStudent = await students.findOne({ _id: req.params.id });
 		if (findStudent) {
@@ -107,12 +99,13 @@ export const getAStudent = async (req, res) => {
 };
 
 export const addStudent = async (req, res) => {
-	// console.log(req.body);
-	// console.log(req.file);
 	try {
+		// If file was uploaded, we already have the Cloudinary URL in req.file.path
 		if (req.file) {
-			req.body.profilePhoto = req.file.filename;
+			// Cloudinary already uploaded the file, just save the path
+			req.body.profilePhoto = req.file.path;
 		}
+
 		const addedStudent = await students.create(req.body);
 		return res.status(201).json({
 			status: "success",
@@ -124,90 +117,70 @@ export const addStudent = async (req, res) => {
 		return res.status(500).json({
 			status: "error",
 			message: "Failed to add student",
+			error: err.message,
 		});
 	}
 };
 
 export const updateStudent = async (req, res) => {
-	// console.log(req.params.id);
-	// console.log(req.body);
-	// console.log(req.file);
 	try {
 		const findStudent = await students.findOne({ _id: req.params.id });
 		if (!findStudent) {
-			if (req.file && req.file.filename) {
-				fs.unlink(
-					path.join(
-						__dirname,
-						"../../../uploads/",
-						req.file.filename
-					),
-					(err) =>
-						err &&
-						console.error("Failed to delete unused file:", err)
-				);
-			}
-
 			return res.status(404).json({
 				status: "not found",
 				message: "Student does not exist",
 			});
 		}
-		if (
-			findStudent.profilePhoto &&
-			req.file && // Only delete old photo if a new one is being uploaded
-			fs.existsSync(
-				path.join(
-					__dirname,
-					"../../../uploads/",
-					findStudent.profilePhoto
-				)
-			)
-		) {
-			fs.unlink(
-				path.join(
-					__dirname,
-					"../../../uploads/",
-					findStudent.profilePhoto
-				),
-				(err) => err && console.error("Failed to delete file:", err)
-			);
+
+		// If student exists and we're uploading a new image
+		if (findStudent.profilePhoto && req.file) {
+			try {
+				// Extract public_id from the Cloudinary URL
+				const publicId = findStudent.profilePhoto
+					.split("/")
+					.pop()
+					.split(".")[0];
+				// Delete the old image from Cloudinary
+				await cloudinary.uploader.destroy(
+					`studentProfilePhotos/${publicId}`
+				);
+			} catch (cloudinaryError) {
+				console.error(
+					"Failed to delete old image from Cloudinary:",
+					cloudinaryError
+				);
+				// Continue with the update even if image deletion fails
+			}
 		}
 
+		// If a new file was uploaded, update the profile photo
 		if (req.file) {
-			req.body.profilePhoto = req.file.filename;
+			req.body.profilePhoto = req.file.path;
 		}
-		// Add { new: true } to return the updated document instead of the original
+
+		// Update the student record
 		const updatedStudent = await students.findByIdAndUpdate(
 			req.params.id,
 			req.body,
 			{ new: true }
 		);
+
 		return res.status(200).json({
 			status: "success",
 			message: "Student updated successfully",
 			student: updatedStudent,
 		});
 	} catch (err) {
-		if (req.file && req.file.filename) {
-			fs.unlink(
-				path.join(__dirname, "../../../uploads/", req.file.filename),
-				(err) =>
-					err &&
-					console.error("Failed to delete file after error:", err)
-			);
-		}
-
 		console.error("Error updating student: ", err);
 		return res.status(500).json({
 			status: "error",
 			message: "Failed to update student",
+			error: err.message,
 		});
 	}
 };
 
 export const deleteStudent = async (req, res) => {
-	// console.log(req.params.id);
 	try {
 		const findStudent = await students.findOne({ _id: req.params.id });
 		if (!findStudent) {
@@ -216,26 +189,31 @@ export const deleteStudent = async (req, res) => {
 				message: "Student does not exist",
 			});
 		}
-		if (
-			findStudent.profilePhoto &&
-			fs.existsSync(
-				path.join(
-					__dirname,
-					"../../../uploads/",
-					findStudent.profilePhoto
-				)
-			)
-		) {
-			fs.unlink(
-				path.join(
-					__dirname,
-					"../../../uploads/",
-					findStudent.profilePhoto
-				),
-				(err) => err && console.error("Failed to delete file:", err)
-			);
+
+		// If the student has a profile photo, delete it from Cloudinary
+		if (findStudent.profilePhoto) {
+			try {
+				// Extract public_id from the Cloudinary URL
+				const publicId = findStudent.profilePhoto
+					.split("/")
+					.pop()
+					.split(".")[0];
+				// Delete the image from Cloudinary
+				await cloudinary.uploader.destroy(
+					`studentProfilePhotos/${publicId}`
+				);
+			} catch (cloudinaryError) {
+				console.error(
+					"Failed to delete image from Cloudinary:",
+					cloudinaryError
+				);
+				// Continue with the deletion even if image deletion fails
+			}
 		}
+
+		// Delete the student record
 		const deletedStudent = await students.findByIdAndDelete(req.params.id);
+
 		return res.status(200).json({
 			status: "success",
 			message: "Student deleted successfully",
@@ -246,6 +224,7 @@ export const deleteStudent = async (req, res) => {
 		return res.status(500).json({
 			status: "error",
 			message: "Failed to delete student",
+			error: err.message,
 		});
 	}
 };
