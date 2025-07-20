@@ -1,31 +1,42 @@
 import students from "../../../models/studentsModel.js";
+import { v2 as cloudinary } from "cloudinary";
 
+// Upload and compress image helper
+const uploadAndCompressImage = async (filePath) => {
+	try {
+		const result = await cloudinary.uploader.upload(filePath, {
+			folder: "studentProfilePhotos",
+			transformation: [
+				{ width: 500, height: 500, crop: "limit" },
+				{ quality: "auto:eco" },
+				{ fetch_format: "auto" },
+			],
+		});
+		return result.secure_url;
+	} catch (error) {
+		console.error("Error uploading to Cloudinary:", error);
+		throw error;
+	}
+};
+
+// Get all students with filters & pagination
 export const getAllStudents = async (req, res) => {
-	let search = req.query.search || "";
-	let currentPage = parseInt(req.query.page) || 0;
-	let recordsPerPage = parseInt(req.query.recordsPerPage) || 5;
-	let sortField = req.query.sortField || "firstName";
-	let sortDirection = req.query.sortDirection === "desc" ? -1 : 1;
+	const search = req.query.search || "";
+	const currentPage = parseInt(req.query.page) || 0;
+	const recordsPerPage = parseInt(req.query.recordsPerPage) || 5;
+	const sortField = req.query.sortField || "firstName";
+	const sortDirection = req.query.sortDirection === "desc" ? -1 : 1;
 
 	try {
 		const query = {
 			$or: [
-				{ firstName: { $regex: new RegExp(search, "i") } },
-				{ lastName: { $regex: new RegExp(search, "i") } },
-				{ gender: { $regex: new RegExp(search, "i") } },
-				{ email: { $regex: new RegExp(search, "i") } },
-				{ city: { $regex: new RegExp(search, "i") } },
+				{ firstName: { $regex: search, $options: "i" } },
+				{ lastName: { $regex: search, $options: "i" } },
+				{ gender: { $regex: search, $options: "i" } },
+				{ email: { $regex: search, $options: "i" } },
+				{ city: { $regex: search, $options: "i" } },
 			],
 		};
-
-		const sortOptions = {};
-		sortOptions[sortField] = sortDirection;
-
-		const allStudents = await students
-			.find(query)
-			.sort(sortOptions)
-			.skip(currentPage * recordsPerPage)
-			.limit(recordsPerPage);
 
 		const totalStudents = await students.countDocuments(query);
 		const totalPages = Math.ceil(totalStudents / recordsPerPage);
@@ -34,11 +45,17 @@ export const getAllStudents = async (req, res) => {
 			return res.status(400).json({
 				status: "error",
 				message: "Page number out of range",
-				totalPages: totalPages > 0 ? totalPages - 1 : 0,
+				totalPages: totalPages - 1,
 			});
 		}
 
-		if (totalStudents === 0) {
+		const allStudents = await students
+			.find(query)
+			.sort({ [sortField]: sortDirection })
+			.skip(currentPage * recordsPerPage)
+			.limit(recordsPerPage);
+
+		if (!allStudents.length) {
 			return res.status(404).json({
 				status: "not found",
 				message: "No students found matching your criteria",
@@ -47,13 +64,13 @@ export const getAllStudents = async (req, res) => {
 
 		return res.status(200).json({
 			status: "success",
-			message: "Get all students data successfully",
+			message: "Fetched students successfully",
 			allStudents,
 			pagination: {
 				recordsPerPage,
 				recordsOnThisPage: allStudents.length,
 				currentPage,
-				totalPages: totalPages > 0 ? totalPages - 1 : 0,
+				totalPages: totalPages - 1,
 				totalRecords: totalStudents,
 				hasNextPage: currentPage < totalPages - 1,
 				hasPrevPage: currentPage > 0,
@@ -65,45 +82,45 @@ export const getAllStudents = async (req, res) => {
 			},
 		});
 	} catch (err) {
-		console.error("Error getting all students", err);
+		console.error("Error fetching students:", err);
 		return res.status(500).json({
 			status: "error",
-			message: "Failed to get all students data",
+			message: "Server error fetching students",
 			error: err.message,
 		});
 	}
 };
 
+// Get a single student by ID
 export const getAStudent = async (req, res) => {
 	try {
-		const findStudent = await students.findOne({ _id: req.params.id });
-		if (findStudent) {
-			return res.status(200).json({
-				status: "success",
-				message: "Student found successfully",
-				findStudent,
-			});
-		} else {
+		const findStudent = await students.findById(req.params.id);
+		if (!findStudent) {
 			return res.status(404).json({
 				status: "not found",
 				message: "Student does not exist",
 			});
 		}
+		return res.status(200).json({
+			status: "success",
+			message: "Student found successfully",
+			findStudent,
+		});
 	} catch (err) {
-		console.error("Error finding a student: ", err);
+		console.error("Error fetching student:", err);
 		return res.status(500).json({
 			status: "error",
-			message: "Failed to find a student",
+			message: "Failed to fetch student",
+			error: err.message,
 		});
 	}
 };
 
+// Add a student
 export const addStudent = async (req, res) => {
 	try {
-		// If file was uploaded, we already have the Cloudinary URL in req.file.path
-		if (req.file) {
-			// Cloudinary already uploaded the file, just save the path
-			req.body.profilePhoto = req.file.path;
+		if (req.file?.path) {
+			req.body.profilePhoto = await uploadAndCompressImage(req.file.path);
 		}
 
 		const addedStudent = await students.create(req.body);
@@ -122,56 +139,53 @@ export const addStudent = async (req, res) => {
 	}
 };
 
+// Update a student
 export const updateStudent = async (req, res) => {
 	try {
-		const findStudent = await students.findOne({ _id: req.params.id });
-		if (!findStudent) {
+		const student = await students.findById(req.params.id);
+		if (!student) {
+			if (req.file?.path) {
+				// Delete uploaded image if student not found
+				const uploadedImagePublicId = req.file.path
+					.split("/")
+					.pop()
+					.split(".")[0];
+				await cloudinary.uploader.destroy(
+					`studentProfilePhotos/${uploadedImagePublicId}`
+				);
+			}
 			return res.status(404).json({
 				status: "not found",
 				message: "Student does not exist",
 			});
 		}
 
-		// If student exists and we're uploading a new image
-		if (findStudent.profilePhoto && req.file) {
-			try {
-				// Extract public_id from the Cloudinary URL
-				const publicId = findStudent.profilePhoto
+		// If new image uploaded, delete old image & update URL
+		if (req.file?.path) {
+			if (student.profilePhoto) {
+				const oldPublicId = student.profilePhoto
 					.split("/")
 					.pop()
 					.split(".")[0];
-				// Delete the old image from Cloudinary
 				await cloudinary.uploader.destroy(
-					`studentProfilePhotos/${publicId}`
+					`studentProfilePhotos/${oldPublicId}`
 				);
-			} catch (cloudinaryError) {
-				console.error(
-					"Failed to delete old image from Cloudinary:",
-					cloudinaryError
-				);
-				// Continue with the update even if image deletion fails
 			}
+			req.body.profilePhoto = await uploadAndCompressImage(req.file.path);
 		}
 
-		// If a new file was uploaded, update the profile photo
-		if (req.file) {
-			req.body.profilePhoto = req.file.path;
-		}
-
-		// Update the student record
 		const updatedStudent = await students.findByIdAndUpdate(
 			req.params.id,
 			req.body,
 			{ new: true }
 		);
-
 		return res.status(200).json({
 			status: "success",
 			message: "Student updated successfully",
 			student: updatedStudent,
 		});
 	} catch (err) {
-		console.error("Error updating student: ", err);
+		console.error("Error updating student:", err);
 		return res.status(500).json({
 			status: "error",
 			message: "Failed to update student",
@@ -180,47 +194,35 @@ export const updateStudent = async (req, res) => {
 	}
 };
 
+// Delete a student
 export const deleteStudent = async (req, res) => {
 	try {
-		const findStudent = await students.findOne({ _id: req.params.id });
-		if (!findStudent) {
+		const student = await students.findById(req.params.id);
+		if (!student) {
 			return res.status(404).json({
 				status: "not found",
 				message: "Student does not exist",
 			});
 		}
 
-		// If the student has a profile photo, delete it from Cloudinary
-		if (findStudent.profilePhoto) {
-			try {
-				// Extract public_id from the Cloudinary URL
-				const publicId = findStudent.profilePhoto
-					.split("/")
-					.pop()
-					.split(".")[0];
-				// Delete the image from Cloudinary
-				await cloudinary.uploader.destroy(
-					`studentProfilePhotos/${publicId}`
-				);
-			} catch (cloudinaryError) {
-				console.error(
-					"Failed to delete image from Cloudinary:",
-					cloudinaryError
-				);
-				// Continue with the deletion even if image deletion fails
-			}
+		if (student.profilePhoto) {
+			const publicId = student.profilePhoto
+				.split("/")
+				.pop()
+				.split(".")[0];
+			await cloudinary.uploader.destroy(
+				`studentProfilePhotos/${publicId}`
+			);
 		}
 
-		// Delete the student record
 		const deletedStudent = await students.findByIdAndDelete(req.params.id);
-
 		return res.status(200).json({
 			status: "success",
 			message: "Student deleted successfully",
 			student: deletedStudent,
 		});
 	} catch (err) {
-		console.error("Error deleting student: ", err);
+		console.error("Error deleting student:", err);
 		return res.status(500).json({
 			status: "error",
 			message: "Failed to delete student",
