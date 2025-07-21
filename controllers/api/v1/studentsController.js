@@ -1,41 +1,69 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-
 import Students from "../../../models/studentsModel.js";
+import { handleApiError, safeDeleteFile } from "../../../utils/errorHandler.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const UPLOAD_DIR = path.join(__dirname, "../../../uploads/");
 
 export const getAllStudents = async (req, res) => {
-	let search = req.query.search || "";
-	let currentPage = parseInt(req.query.page) || 0;
-	let recordsPerPage = parseInt(req.query.recordsPerPage) || 5;
-	let sortField = req.query.sortField || "firstName";
-	let sortDirection = req.query.sortDirection === "desc" ? -1 : 1;
+	// Improved input validation with defaults and type conversion
+	const search = req.query.search?.toString() || "";
+	const currentPage = Math.max(0, parseInt(req.query.page) || 0);
+	const recordsPerPage = Math.min(
+		100,
+		Math.max(1, parseInt(req.query.recordsPerPage) || 5)
+	);
+	const sortField = ["firstName", "lastName", "email", "createdAt"].includes(
+		req.query.sortField
+	)
+		? req.query.sortField
+		: "firstName";
+	const sortDirection = req.query.sortDirection === "desc" ? -1 : 1;
 
 	try {
-		const query = {
-			$or: [
-				{ firstName: { $regex: new RegExp(search, "i") } },
-				{ lastName: { $regex: new RegExp(search, "i") } },
-				{ gender: { $regex: new RegExp(search, "i") } },
-				{ email: { $regex: new RegExp(search, "i") } },
-				{ city: { $regex: new RegExp(search, "i") } },
-			],
-		};
+		// Build search query with validation
+		const query = search
+			? {
+					$or: [
+						{ firstName: { $regex: new RegExp(search, "i") } },
+						{ lastName: { $regex: new RegExp(search, "i") } },
+						{ gender: { $regex: new RegExp(search, "i") } },
+						{ email: { $regex: new RegExp(search, "i") } },
+						{ city: { $regex: new RegExp(search, "i") } },
+					],
+			  }
+			: {};
 
+		// Prepare sort options
 		const sortOptions = {};
 		sortOptions[sortField] = sortDirection;
 
-		const allStudents = await Students.find(query)
-			.sort(sortOptions)
-			.skip(currentPage * recordsPerPage)
-			.limit(recordsPerPage);
-
+		// Get total count first to avoid unnecessary queries
 		const totalStudents = await Students.countDocuments(query);
+
+		if (totalStudents === 0) {
+			return res.status(200).json({
+				status: "success",
+				message: "No students found matching your criteria",
+				allStudents: [],
+				pagination: {
+					recordsPerPage,
+					recordsOnThisPage: 0,
+					currentPage,
+					totalPages: 0,
+					totalRecords: 0,
+					hasNextPage: false,
+					hasPrevPage: false,
+				},
+			});
+		}
+
 		const totalPages = Math.ceil(totalStudents / recordsPerPage);
 
+		// Validate page number is in range
 		if (totalStudents > 0 && currentPage >= totalPages) {
 			return res.status(400).json({
 				status: "error",
@@ -44,16 +72,16 @@ export const getAllStudents = async (req, res) => {
 			});
 		}
 
-		if (totalStudents === 0) {
-			return res.status(404).json({
-				status: "not found",
-				message: "No students found matching your criteria",
-			});
-		}
+		// Execute query with pagination and sorting
+		const allStudents = await Students.find(query)
+			.select("-password") // Exclude sensitive data
+			.sort(sortOptions)
+			.skip(currentPage * recordsPerPage)
+			.limit(recordsPerPage);
 
 		return res.status(200).json({
 			status: "success",
-			message: "Get all students data successfully",
+			message: "Retrieved student data successfully",
 			allStudents,
 			pagination: {
 				recordsPerPage,
@@ -71,187 +99,186 @@ export const getAllStudents = async (req, res) => {
 			},
 		});
 	} catch (err) {
-		console.error("Error getting all students", err);
-		return res.status(500).json({
-			status: "error",
-			message: "Failed to get all students data",
-			error: err.message,
-		});
+		return handleApiError(res, err, "Failed to get students data");
 	}
 };
 
 export const getAStudent = async (req, res) => {
-	// console.log(req.params.id);
 	try {
-		const findStudent = await Students.findOne({ _id: req.params.id });
-		if (findStudent) {
-			return res.status(200).json({
-				status: "success",
-				message: "Student found successfully",
-				findStudent,
-			});
-		} else {
-			return res.status(404).json({
-				status: "not found",
-				message: "Student does not exist",
+		// Validate ID format
+		if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+			return res.status(400).json({
+				status: "error",
+				message: "Invalid student ID format",
 			});
 		}
-	} catch (err) {
-		console.error("Error finding a student: ", err);
-		return res.status(500).json({
-			status: "error",
-			message: "Failed to find a student",
+
+		const student = await Students.findById(req.params.id).select(
+			"-password"
+		);
+
+		if (!student) {
+			return res.status(404).json({
+				status: "not found",
+				message: "Student not found",
+			});
+		}
+
+		return res.status(200).json({
+			status: "success",
+			message: "Student found successfully",
+			student,
 		});
+	} catch (err) {
+		return handleApiError(res, err, "Failed to find student");
 	}
 };
 
 export const addStudent = async (req, res) => {
-	// console.log(req.body);
-	// console.log(req.file);
 	try {
-		if (req.file) {
-			req.body.profilePhoto = req.file.filename;
+		// Validate file exists
+		if (!req.file) {
+			return res.status(400).json({
+				status: "error",
+				message: "Profile photo is required",
+			});
 		}
-		const addedStudent = await Students.create(req.body);
+
+		// Add profile photo path
+		req.body.profilePhoto = req.file.filename;
+
+		// Create student
+		const student = await Students.create(req.body);
+
+		// Return student data without password
+		const studentResponse = student.toObject();
+		delete studentResponse.password;
+
 		return res.status(201).json({
 			status: "success",
 			message: "Student added successfully",
-			student: addedStudent,
+			student: studentResponse,
 		});
 	} catch (err) {
-		console.error("Error adding student:", err);
-		return res.status(500).json({
-			status: "error",
-			message: "Failed to add student",
-		});
+		// Clean up uploaded file if student creation fails
+		if (req.file && req.file.filename) {
+			await safeDeleteFile(path.join(UPLOAD_DIR, req.file.filename));
+		}
+
+		return handleApiError(res, err, "Failed to add student");
 	}
 };
 
 export const updateStudent = async (req, res) => {
-	// console.log(req.params.id);
-	// console.log(req.body);
-	// console.log(req.file);
 	try {
-		const findStudent = await Students.findOne({ _id: req.params.id });
-		if (!findStudent) {
+		// Validate ID format
+		if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+			// Clean up uploaded file if ID is invalid
 			if (req.file && req.file.filename) {
-				fs.unlink(
-					path.join(
-						__dirname,
-						"../../../uploads/",
-						req.file.filename
-					),
-					(err) =>
-						err &&
-						console.error("Failed to delete unused file:", err)
-				);
+				await safeDeleteFile(path.join(UPLOAD_DIR, req.file.filename));
+			}
+
+			return res.status(400).json({
+				status: "error",
+				message: "Invalid student ID format",
+			});
+		}
+
+		// Find student
+		const student = await Students.findById(req.params.id);
+
+		if (!student) {
+			// Clean up uploaded file if student not found
+			if (req.file && req.file.filename) {
+				await safeDeleteFile(path.join(UPLOAD_DIR, req.file.filename));
 			}
 
 			return res.status(404).json({
 				status: "not found",
-				message: "Student does not exist",
+				message: "Student not found",
 			});
 		}
-		if (
-			findStudent.profilePhoto &&
-			req.file && // Only delete old photo if a new one is being uploaded
-			fs.existsSync(
-				path.join(
-					__dirname,
-					"../../../uploads/",
-					findStudent.profilePhoto
-				)
-			)
-		) {
-			fs.unlink(
-				path.join(
-					__dirname,
-					"../../../uploads/",
-					findStudent.profilePhoto
-				),
-				(err) => err && console.error("Failed to delete file:", err)
-			);
-		}
 
+		// Handle file upload
 		if (req.file) {
+			// Delete old profile photo if exists
+			if (student.profilePhoto) {
+				await safeDeleteFile(
+					path.join(UPLOAD_DIR, student.profilePhoto)
+				);
+			}
+
+			// Update with new profile photo
 			req.body.profilePhoto = req.file.filename;
 		}
-		// Add { new: true } to return the updated document instead of the original
+
+		// Update student
 		const updatedStudent = await Students.findByIdAndUpdate(
 			req.params.id,
 			req.body,
-			{ new: true }
-		);
+			{ new: true, runValidators: true }
+		).select("-password");
+
 		return res.status(200).json({
 			status: "success",
 			message: "Student updated successfully",
 			student: updatedStudent,
 		});
 	} catch (err) {
+		// Clean up uploaded file if update fails
 		if (req.file && req.file.filename) {
-			fs.unlink(
-				path.join(__dirname, "../../../uploads/", req.file.filename),
-				(err) =>
-					err &&
-					console.error("Failed to delete file after error:", err)
-			);
+			await safeDeleteFile(path.join(UPLOAD_DIR, req.file.filename));
 		}
 
-		console.error("Error updating student: ", err);
-		return res.status(500).json({
-			status: "error",
-			message: "Failed to update student",
-		});
+		return handleApiError(res, err, "Failed to update student");
 	}
 };
 
 export const deleteStudent = async (req, res) => {
-	// console.log(req.params.id);
 	try {
-		const findStudent = await Students.findOne({ _id: req.params.id });
-		if (!findStudent) {
-			return res.status(404).json({
-				status: "not found",
-				message: "Student does not exist",
+		// Validate ID format
+		if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+			return res.status(400).json({
+				status: "error",
+				message: "Invalid student ID format",
 			});
 		}
-		if (
-			findStudent.profilePhoto &&
-			fs.existsSync(
-				path.join(
-					__dirname,
-					"../../../uploads/",
-					findStudent.profilePhoto
-				)
-			)
-		) {
-			fs.unlink(
-				path.join(
-					__dirname,
-					"../../../uploads/",
-					findStudent.profilePhoto
-				),
-				(err) => err && console.error("Failed to delete file:", err)
-			);
+
+		// Find student
+		const student = await Students.findById(req.params.id);
+
+		if (!student) {
+			return res.status(404).json({
+				status: "not found",
+				message: "Student not found",
+			});
 		}
+
+		// Delete profile photo if exists
+		if (student.profilePhoto) {
+			await safeDeleteFile(path.join(UPLOAD_DIR, student.profilePhoto));
+		}
+
+		// Delete student
 		const deletedStudent = await Students.findByIdAndDelete(req.params.id);
+
+		// Return deleted student without password
+		const studentResponse = deletedStudent.toObject();
+		delete studentResponse.password;
+
 		return res.status(200).json({
 			status: "success",
 			message: "Student deleted successfully",
-			student: deletedStudent,
+			student: studentResponse,
 		});
 	} catch (err) {
-		console.error("Error deleting student: ", err);
-		return res.status(500).json({
-			status: "error",
-			message: "Failed to delete student",
-		});
+		return handleApiError(res, err, "Failed to delete student");
 	}
 };
 
 export const failedLogin = (req, res) => {
 	return res.status(401).json({
-		status: "unauthenticated",
-		message: "You have to login with valid credentials",
+		status: "unauthorized",
+		message: "Authentication failed. Please login with valid credentials.",
 	});
 };
