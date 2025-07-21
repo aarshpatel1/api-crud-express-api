@@ -52,8 +52,9 @@ const studentSchema = mongoose.Schema(
 			trim: true,
 		},
 		profilePhoto: {
-			type: String,
+			type: Object, 
 			required: true,
+			// Example: { url: String, public_id: String }
 		},
 	},
 	{

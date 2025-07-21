@@ -1,5 +1,6 @@
 import path from "path";
 import { fileURLToPath } from "url";
+import cloudinary from "../../../config/cloudinary.js";
 import Students from "../../../models/studentsModel.js";
 import { handleApiError, safeDeleteFile } from "../../../utils/errorHandler.js";
 import bcrypt from "bcrypt";
@@ -143,7 +144,10 @@ export const addStudent = async (req, res) => {
 				message: "Profile photo is required",
 			});
 		}
-		req.body.profilePhoto = req.file.path; // Cloudinary URL
+		req.body.profilePhoto = {
+			url: req.file.path,
+			public_id: req.file.filename,
+		};
 
 		// Hash password before saving
 		if (req.body.password) {
@@ -181,8 +185,25 @@ export const updateStudent = async (req, res) => {
 			});
 		}
 
+		// If new photo uploaded, delete old one from Cloudinary
 		if (req.file && req.file.path) {
-			req.body.profilePhoto = req.file.path; // Cloudinary URL
+			if (student.profilePhoto && student.profilePhoto.public_id) {
+				try {
+					await cloudinary.uploader.destroy(
+						student.profilePhoto.public_id
+					);
+				} catch (err) {
+					console.error(
+						"Failed to delete Cloudinary image:",
+						err.message
+					);
+				}
+			}
+
+			req.body.profilePhoto = {
+				url: req.file.path,
+				public_id: req.file.filename,
+			};
 		}
 
 		const updatedStudent = await Students.findByIdAndUpdate(
@@ -221,9 +242,18 @@ export const deleteStudent = async (req, res) => {
 			});
 		}
 
-		// Delete profile photo if exists
-		if (student.profilePhoto) {
-			await safeDeleteFile(path.join(UPLOAD_DIR, student.profilePhoto));
+		// Delete profile photo from Cloudinary if exists
+		if (student.profilePhoto && student.profilePhoto.public_id) {
+			try {
+				await cloudinary.uploader.destroy(
+					student.profilePhoto.public_id
+				);
+			} catch (err) {
+				console.error(
+					"Failed to delete Cloudinary image:",
+					err.message
+				);
+			}
 		}
 
 		// Delete student
