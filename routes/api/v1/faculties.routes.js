@@ -1,5 +1,6 @@
-import express from "express";
 import * as facultiesController from "../../../controllers/api/v1/facultiesController.js";
+
+import express from "express";
 import { validateFaculty } from "../../../middlewares/validators.js";
 
 const router = express.Router();

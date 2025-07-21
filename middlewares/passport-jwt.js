@@ -1,7 +1,8 @@
-import { ExtractJwt, Strategy as JwtStrategy } from "passport-jwt";
-import { config } from "dotenv";
-import passport from "passport";
 import Faculties from "../models/facultiesModel.js";
+
+import { ExtractJwt, Strategy as JwtStrategy } from "passport-jwt";
+import passport from "passport";
+import { config } from "dotenv";
 
 config({
 	path: "./.env",

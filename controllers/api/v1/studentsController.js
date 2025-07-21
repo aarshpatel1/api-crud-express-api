@@ -1,13 +1,9 @@
-import path from "path";
-import { fileURLToPath } from "url";
 import cloudinary from "../../../config/cloudinary.js";
 import Students from "../../../models/studentsModel.js";
-import { handleApiError, safeDeleteFile } from "../../../utils/errorHandler.js";
+
+import { handleApiError } from "../../../utils/errorHandler.js";
 import bcrypt from "bcrypt";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const UPLOAD_DIR = path.join(__dirname, "../../../uploads/");
 const salt = 10;
 
 export const getAllStudents = async (req, res) => {

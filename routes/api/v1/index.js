@@ -6,11 +6,14 @@ const router = express.Router();
 
 router.get("/", (req, res) => {
 	res.status(200).json({
-		message: "API v1 endpoints",
-		endpoints: {
-			students: "/students - Student management endpoints",
-			faculties: "/faculties - Faculty authnetication endpoints",
-		},
+		message: "Welcome to API v1 endpoints",
+		endpoints: [
+			{ path: "/students", description: "Student management endpoints" },
+			{
+				path: "/faculties",
+				description: "Faculty authentication endpoints",
+			},
+		],
 	});
 });
 

@@ -1,5 +1,6 @@
+import cloudinary from "../config/cloudinary.js";
+
 import { body, param, query, validationResult } from "express-validator";
-import cloudinary from "../config/cloudinary.js"; // import your cloudinary config
 
 // Helper function to check validation results
 const handleValidationErrors = async (req, res, next) => {

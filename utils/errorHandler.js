@@ -1,6 +1,3 @@
-import fs from "fs";
-import path from "path";
-
 /**
  * Central error handling middleware for API responses
  * @param {Object} res - Express response object
@@ -41,22 +38,4 @@ export const handleApiError = (
 					: undefined,
 		}),
 	});
-};
-
-/**
- * Safely delete a file with error handling
- * @param {string} filePath - Path to the file to delete
- * @returns {Promise<boolean>} - True if successful, false if failed
- */
-export const safeDeleteFile = async (filePath) => {
-	try {
-		if (fs.existsSync(filePath)) {
-			await fs.promises.unlink(filePath);
-			return true;
-		}
-		return false;
-	} catch (error) {
-		console.error("Error deleting file:", error);
-		return false;
-	}
 };

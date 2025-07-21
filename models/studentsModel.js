@@ -1,7 +1,8 @@
+import cloudinary from "../config/cloudinary.js";
+
 import mongoose from "mongoose";
 import multer from "multer";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
-import cloudinary from "../config/cloudinary.js";
 import sharp from "sharp";
 
 // Enhanced schema with timestamps and better validation

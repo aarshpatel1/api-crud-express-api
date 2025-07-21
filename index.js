@@ -1,6 +1,7 @@
 import db from "./config/db.js";
-import routes from "./routes/api/v1/index.js";
 import passportjwt from "./middlewares/passport-jwt.js";
+import routes from "./routes/api/v1/index.js";
+
 import express from "express";
 import passport from "passport";
 import { config } from "dotenv";

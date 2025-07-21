@@ -1,4 +1,5 @@
 import Faculties from "../../../models/facultiesModel.js";
+
 import { config } from "dotenv";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
