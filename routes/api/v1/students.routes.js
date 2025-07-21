@@ -17,30 +17,29 @@ router.get("/getAllStudents", authenticate, studentsController.getAllStudents);
 // Get a specific student by ID
 router.get("/getAStudent/:id", authenticate, studentsController.getAStudent);
 
-// Add a new student with validation
+// Add a new student with validation and image compression
 router.post(
 	"/addStudent",
 	authenticate,
-	validateStudent("create"),
 	students.uploadStudentProfilePhoto,
+	validateStudent("create"),
 	studentsController.addStudent
 );
 
-// Combine PUT and PATCH into a single route handler
-// Both methods perform the same update operation
+// Update student with validation and image compression
 router.put(
 	"/updateStudent/:id",
 	authenticate,
-	validateStudent("update"),
 	students.uploadStudentProfilePhoto,
+	validateStudent("update"),
 	studentsController.updateStudent
 );
 
 router.patch(
 	"/updateStudent/:id",
 	authenticate,
-	validateStudent("update"),
 	students.uploadStudentProfilePhoto,
+	validateStudent("update"),
 	studentsController.updateStudent
 );
 

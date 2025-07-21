@@ -1,16 +1,8 @@
 import mongoose from "mongoose";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
-import crypto from "crypto";
-
-// Define the upload directory
-const UPLOAD_DIR = path.join(process.cwd(), "uploads");
-
-// Create upload directory if it doesn't exist
-if (!fs.existsSync(UPLOAD_DIR)) {
-	fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+import cloudinary from "../config/cloudinary.js";
+import sharp from "sharp";
 
 // Enhanced schema with timestamps and better validation
 const studentSchema = mongoose.Schema(
@@ -70,40 +62,51 @@ const studentSchema = mongoose.Schema(
 	}
 );
 
-// Define file storage configuration
-const storage = multer.diskStorage({
-	destination: (req, file, cb) => {
-		cb(null, UPLOAD_DIR);
-	},
-	filename: (req, file, cb) => {
-		// Generate random string to ensure uniqueness
-		const randomString = crypto.randomBytes(8).toString("hex");
-		// Use original file extension
-		const ext = path.extname(file.originalname);
-		cb(null, `${file.fieldname}-${Date.now()}-${randomString}${ext}`);
+// Cloudinary storage with image compression using Sharp
+const storage = new CloudinaryStorage({
+	cloudinary: cloudinary,
+	params: async (req, file) => {
+		return {
+			folder: "students",
+			format: "jpg", // force jpg for compression
+			transformation: [
+				{ width: 400, height: 400, crop: "limit" }, // resize if needed
+				{ quality: "auto:good" }, // cloudinary compression
+			],
+		};
 	},
 });
 
-// File filter to validate uploaded images
-const fileFilter = (req, file, cb) => {
-	// Accept only image files
-	if (file.mimetype.startsWith("image/")) {
-		cb(null, true);
-	} else {
-		cb(new Error("Only image files are allowed!"), false);
-	}
-};
-
-// Configure multer with improved settings
-studentSchema.statics.uploadStudentProfilePhoto = multer({
+// Multer middleware with sharp compression before upload
+const uploadStudentProfilePhoto = multer({
 	storage: storage,
-	fileFilter: fileFilter,
-	limits: {
-		fileSize: 2 * 1024 * 1024, // 2MB limit
+	fileFilter: (req, file, cb) => {
+		if (file.mimetype.startsWith("image/")) {
+			cb(null, true);
+		} else {
+			cb(new Error("Only image files are allowed!"), false);
+		}
 	},
+	limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
 }).single("profilePhoto");
 
-// Create the model
+// Middleware to compress image before uploading to Cloudinary
+export const compressAndUpload = (req, res, next) => {
+	if (!req.file) return next();
+	const buffer = req.file.buffer;
+	sharp(buffer)
+		.resize(400, 400, { fit: "inside" })
+		.jpeg({ quality: 80 })
+		.toBuffer()
+		.then((data) => {
+			req.file.buffer = data;
+			next();
+		})
+		.catch((err) => next(err));
+};
+
+studentSchema.statics.uploadStudentProfilePhoto = uploadStudentProfilePhoto;
+
 const Students = mongoose.model("student", studentSchema);
 
 export default Students;

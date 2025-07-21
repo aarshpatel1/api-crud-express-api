@@ -1,4 +1,3 @@
-import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import Students from "../../../models/studentsModel.js";
@@ -136,21 +135,15 @@ export const getAStudent = async (req, res) => {
 
 export const addStudent = async (req, res) => {
 	try {
-		// Validate file exists
-		if (!req.file) {
+		if (!req.file || !req.file.path) {
 			return res.status(400).json({
 				status: "error",
 				message: "Profile photo is required",
 			});
 		}
+		req.body.profilePhoto = req.file.path; // Cloudinary URL
 
-		// Add profile photo path
-		req.body.profilePhoto = req.file.filename;
-
-		// Create student
 		const student = await Students.create(req.body);
-
-		// Return student data without password
 		const studentResponse = student.toObject();
 		delete studentResponse.password;
 
@@ -160,59 +153,31 @@ export const addStudent = async (req, res) => {
 			student: studentResponse,
 		});
 	} catch (err) {
-		// Clean up uploaded file if student creation fails
-		if (req.file && req.file.filename) {
-			await safeDeleteFile(path.join(UPLOAD_DIR, req.file.filename));
-		}
-
 		return handleApiError(res, err, "Failed to add student");
 	}
 };
 
 export const updateStudent = async (req, res) => {
 	try {
-		// Validate ID format
 		if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
-			// Clean up uploaded file if ID is invalid
-			if (req.file && req.file.filename) {
-				await safeDeleteFile(path.join(UPLOAD_DIR, req.file.filename));
-			}
-
 			return res.status(400).json({
 				status: "error",
 				message: "Invalid student ID format",
 			});
 		}
 
-		// Find student
 		const student = await Students.findById(req.params.id);
-
 		if (!student) {
-			// Clean up uploaded file if student not found
-			if (req.file && req.file.filename) {
-				await safeDeleteFile(path.join(UPLOAD_DIR, req.file.filename));
-			}
-
 			return res.status(404).json({
 				status: "not found",
 				message: "Student not found",
 			});
 		}
 
-		// Handle file upload
-		if (req.file) {
-			// Delete old profile photo if exists
-			if (student.profilePhoto) {
-				await safeDeleteFile(
-					path.join(UPLOAD_DIR, student.profilePhoto)
-				);
-			}
-
-			// Update with new profile photo
-			req.body.profilePhoto = req.file.filename;
+		if (req.file && req.file.path) {
+			req.body.profilePhoto = req.file.path; // Cloudinary URL
 		}
 
-		// Update student
 		const updatedStudent = await Students.findByIdAndUpdate(
 			req.params.id,
 			req.body,
@@ -225,11 +190,6 @@ export const updateStudent = async (req, res) => {
 			student: updatedStudent,
 		});
 	} catch (err) {
-		// Clean up uploaded file if update fails
-		if (req.file && req.file.filename) {
-			await safeDeleteFile(path.join(UPLOAD_DIR, req.file.filename));
-		}
-
 		return handleApiError(res, err, "Failed to update student");
 	}
 };

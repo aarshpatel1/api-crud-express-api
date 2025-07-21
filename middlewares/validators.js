@@ -1,9 +1,22 @@
 import { body, param, query, validationResult } from "express-validator";
+import cloudinary from "../config/cloudinary.js"; // import your cloudinary config
 
 // Helper function to check validation results
-const handleValidationErrors = (req, res, next) => {
+const handleValidationErrors = async (req, res, next) => {
 	const errors = validationResult(req);
 	if (!errors.isEmpty()) {
+		// If an image was uploaded, delete it from Cloudinary
+		if (req.file && req.file.filename) {
+			// For multer-storage-cloudinary, the public_id is in req.file.filename (or req.file.public_id)
+			try {
+				await cloudinary.uploader.destroy(req.file.filename);
+			} catch (e) {
+				console.error(
+					"Failed to delete Cloudinary image after validation error:",
+					e.message
+				);
+			}
+		}
 		return res.status(400).json({
 			status: "error",
 			message: "Validation failed",
