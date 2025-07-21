@@ -2,10 +2,12 @@ import path from "path";
 import { fileURLToPath } from "url";
 import Students from "../../../models/studentsModel.js";
 import { handleApiError, safeDeleteFile } from "../../../utils/errorHandler.js";
+import bcrypt from "bcrypt";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const UPLOAD_DIR = path.join(__dirname, "../../../uploads/");
+const salt = 10;
 
 export const getAllStudents = async (req, res) => {
 	// Improved input validation with defaults and type conversion
@@ -142,6 +144,11 @@ export const addStudent = async (req, res) => {
 			});
 		}
 		req.body.profilePhoto = req.file.path; // Cloudinary URL
+
+		// Hash password before saving
+		if (req.body.password) {
+			req.body.password = await bcrypt.hash(req.body.password, salt);
+		}
 
 		const student = await Students.create(req.body);
 		const studentResponse = student.toObject();
